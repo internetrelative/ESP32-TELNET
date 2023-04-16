@@ -1,5 +1,6 @@
 #include <WiFi.h>
-
+#include <WiFiClient.h>
+#include <WiFiServer.h>
 #define MAX_CLIENTS 2
 
 const char *ssid = "YOUR_SSID";
@@ -70,8 +71,10 @@ void loop()
         if (!client[i] || !client[i].connected())
         {
           client[i] = server.available();
+
           Serial.printf("New client: %d %s\n\r", i, client[i].remoteIP().toString().c_str());
           client[i].write("Server -> Hello World\n\r"); // Greet user when they connect
+          lastUpTime[i] = millis();
           break;
         }
       }
@@ -87,14 +90,13 @@ void loop()
     {
       for (i = 0; i < MAX_CLIENTS; i++)
       {
-        if (client[i].connected())
+        if (client[i] && client[i].connected())
         {
           // if client is connected, update lastUpTime
           lastUpTime[i] = millis();
 
           ///////////////////////////////////////  RECEIVING  DATA /////////////////////////////////////////
           bool firstLine = true;
-          bool skip_telnet_negotiation = true;
           while (client[i].available()) // if there's data from client
           {
             char c = client[i].read();
@@ -116,16 +118,18 @@ void loop()
           }
           ////////////////////////////////////////////////////////////////////////////////////////////////////
         }
-        else
-        {
-          // if client is disconnected, check if it's been disconnected for more than 1s before closing the connection
-          if (lastUpTime[i] != 0 && millis() - lastUpTime[i] >= 1000)
-          {
-            Serial.printf("Client %d disconnected\n\r", i);
-            client[i].stop();
-            lastUpTime[i] = 0;
-          }
-        }
+      }
+    }
+
+    // check if client is disconnected
+    for (i = 0; i < MAX_CLIENTS; i++)
+    {
+      // check client is disconnected for more than 500ms before closing the connection
+      if (lastUpTime[i] != 0 && millis() - lastUpTime[i] >= 500)
+      {
+        Serial.printf("Client %d disconnected\n\r", i);
+        client[i].stop();
+        lastUpTime[i] = 0;
       }
     }
   }
@@ -145,16 +149,14 @@ void loop()
     // send to all clients that are connected
     for (uint8_t i = 0; i < MAX_CLIENTS; i++)
     {
-      if (client[i])
+      if (client[i] && client[i].connected())
       {
-        if (client[i].connected())
-        {
-          clientIP = client[i].remoteIP();
-          Serial.printf("Sending to client %d -> %s\n\r", i, cstr);
-          client[i].write("Server -> ");
-          client[i].write(cstr);
-          client[i].write("\n\r");
-        }
+        lastUpTime[i] = millis();
+        clientIP = client[i].remoteIP();
+        Serial.printf("Sending to client %d -> %s\n\r", i, cstr);
+        client[i].write("Server -> ");
+        client[i].write(cstr);
+        client[i].write("\n\r");
       }
     }
     /////////////////////////////////////////////////////////////////////////////////////
