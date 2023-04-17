@@ -1,6 +1,8 @@
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <WiFiServer.h>
+#include <lwip/sockets.h>
+#include <lwip/netdb.h>
 #define MAX_CLIENTS 2
 
 const char *ssid = "YOUR_SSID";
@@ -72,6 +74,18 @@ void loop()
         {
           client[i] = server.available();
 
+          /////////////////////////////// KEEP ALIVE ///////////////////////////////
+          int fd = client[i].fd();
+          int keepAlive = 1;
+          int keepIdle = 5; // time in seconds to wait before sending keep-alive packet
+          int keepInterval = 5; // time in seconds between subsequent keep-alive packets if no response is received
+          int keepCount = 2; // number of keep-alive packets to send before dropping the connection
+          setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(int));
+          setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, &keepIdle, sizeof(int));
+          setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, &keepInterval, sizeof(int));
+          setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, &keepCount, sizeof(int));
+          /////////////////////////////////////////////////////////////////////////
+
           Serial.printf("New client: %d %s\n\r", i, client[i].remoteIP().toString().c_str());
           client[i].write("Server -> Hello World\n\r"); // Greet user when they connect
           lastUpTime[i] = millis();
@@ -97,6 +111,8 @@ void loop()
 
           ///////////////////////////////////////  RECEIVING  DATA /////////////////////////////////////////
           bool firstLine = true;
+          String inputString = "";
+
           while (client[i].available()) // if there's data from client
           {
             char c = client[i].read();
@@ -109,11 +125,18 @@ void loop()
                 firstLine = false;
               }
               Serial.write(c);
+              inputString += c;
             }
             if (c == '\n')
             {
               firstLine = true;
               Serial.printf("\n\r");
+
+              const char *cstr = inputString.c_str();
+              if (strcmp(cstr, "restart") == 0)
+              {
+                ESP.restart();
+              }
             }
           }
           ////////////////////////////////////////////////////////////////////////////////////////////////////
